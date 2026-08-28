@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Wellone Order Receiving</title>
+  <link rel="preconnect" href="https://wnavzhrkwgnegjdetdno.supabase.co">
+  <link rel="stylesheet" href="css/orders.css?v=80">
+  <link rel="icon" href="assets/favicon/favicon.ico">
+  <link rel="apple-touch-icon" href="assets/favicon/apple-icon-180x180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#f5fff4">
+</head>
+<body>
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <img src="assets/logo.png?v=80" alt="Wellone">
+      <p class="tag">secure order desk</p>
+      <h1>Order Receiving</h1>
+      <p class="login-copy">Use an authorized Wellone admin login.</p>
+      <input id="emailInput" type="email" placeholder="Admin email" autocomplete="username" required>
+      <input id="passwordInput" type="password" placeholder="Admin password" autocomplete="current-password" required>
+      <button type="submit">Login</button>
+      <p id="loginError" class="login-error"></p>
+    </form>
+  </section>
+
+  <main id="receiverApp" class="receiver-shell" hidden>
+    <header class="receiver-head">
+      <img src="assets/logo.png?v=80" alt="Wellone">
+      <div><small>Live operations</small><b>Order Receiving</b></div>
+      <button id="logoutBtn" type="button">Logout</button>
+    </header>
+
+    <section class="receiver-card">
+      <div class="panel-head">
+        <div><p class="tag">live orders</p><h1>Orders</h1><p>Confirmed customer orders appear here automatically.</p></div>
+        <button id="reloadOrdersBtn" class="primary-small" type="button">Refresh</button>
+      </div>
+      <div class="order-filter-row">
+        <select id="orderStatusFilter" aria-label="Order status filter">
+          <option value="">All orders</option><option value="confirmed">Confirmed</option><option value="packed">Packed</option><option value="out_for_delivery">Out for delivery</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option>
+        </select>
+        <input id="orderSearchInput" type="search" placeholder="Search order, customer or phone">
+      </div>
+      <div id="statusText" class="receiver-status">Login required.</div>
+      <div id="orderList" class="admin-order-list"><div class="empty">No orders loaded.</div></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/admin-config.js?v=80"></script>
+  <script src="js/orders-receiving.js?v=80"></script>
+  <script src="js/pwa-install.js?v=80"></script>
+</body>
+</html>

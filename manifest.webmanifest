@@ -1,0 +1,41 @@
+{
+  "id": "wellone-order-receiving",
+  "name": "Wellone Order Receiving",
+  "short_name": "Wellone Orders",
+  "description": "Live Wellone order receiving and fulfilment desk.",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5fff4",
+  "theme_color": "#f5fff4",
+  "orientation": "portrait-primary",
+  "categories": [
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "assets/favicon/wellone-icon-192-v46.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/favicon/wellone-icon-512-v46.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/favicon/wellone-icon-192-maskable-v46.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/favicon/wellone-icon-512-maskable-v46.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
