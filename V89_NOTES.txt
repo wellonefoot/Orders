@@ -1,0 +1,7 @@
+WellOne Order Receiving v89
+- Fixed admin login path for browser/network “Failed to fetch” cases by using a same-origin Netlify relay to Supabase.
+- No direct browser dependency on the Supabase project hostname for Auth/REST calls.
+- Login/session requests are no-store and timeout-safe.
+- Transient access failures no longer destroy a valid stored session.
+- Service worker cache namespace bumped and /supabase/* explicitly bypasses SW caching.
+- Added live polling fallback for order updates when Realtime WebSocket cannot connect.
