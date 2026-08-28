@@ -1,8 +1,7 @@
-WELLONE ORDER RECEIVING SITE - SEPARATE DEPLOYMENT
-
-Deploy the CONTENTS of this folder as its own site.
-Main entry: index.html
-
-Security: this site requires an existing authorized Wellone Admin Supabase login.
-It shows confirmed orders live and lets staff change order status (Confirmed/Packed/Out for delivery/Delivered/Cancelled) and payment status.
-Cancelling requires a reason and restores eligible reserved stock through the shared database RPC.
+WellOne Order Tracking / Receiving v85 — new-order inbox
+- Separate deployment; index.html is at ZIP root.
+- The opening section shows only new placed orders.
+- History and Cancelled are separate; History filters confirmed, paid, packed, out-for-delivery and delivered orders.
+- Cards stay compact until full details are opened.
+- v85 uses a fresh service-worker/cache namespace and stable static-asset caching.
+- Run supabase/10_v85_heavy_commerce_flow.sql once before using this build.
