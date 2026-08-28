@@ -1,0 +1,24 @@
+WellOne Order Receiving v93 — OLD WORKING ADMIN REFERENCE RESTORE
+
+Reference used:
+- wellone-admin-main(3).zip (old working admin supplied by user)
+
+What was verified from the reference:
+- Same Supabase project URL
+- Same publishable/anon key
+- Same product-images bucket
+- Direct @supabase/supabase-js v2 client
+- Email/password auth with signInWithPassword
+- Admin authorization via auth.getUser() + admin_users lookup
+- Supabase network requests are not routed through a custom browser proxy
+
+What v93 changes:
+- Removed all v89-v92 custom fetch/proxy/fallback code.
+- Removed Netlify/Cloudflare proxy files from this package.
+- Restored separate admin-config.js + order receiver JS loading, matching the old admin structure.
+- Direct Supabase createClient() is used exactly like the old working admin reference.
+- Service worker never caches Supabase API/auth traffic.
+- New v93 cache namespace prevents the v89-v92 scripts from being reused.
+
+Database:
+- No new SQL for this connection/login change.

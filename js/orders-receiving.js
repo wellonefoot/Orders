@@ -1,133 +1,28 @@
+/* WellOne Order Receiving v93
+   Auth/connection intentionally follows the old working admin reference:
+   separate ADMIN_CONFIG + direct Supabase createClient, no custom fetch/proxy. */
 (()=>{
   'use strict';
   const $=id=>document.getElementById(id);
   const clean=v=>String(v??'').trim();
+  const key=v=>clean(v).toLowerCase();
   const esc=v=>clean(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const STORE_CHANNEL_NAME='wellone-store-events-v1',STORE_EVENT_NAME='store-change';
   const ORDER_PAGE_SIZE=20;
   const ORDER_SELECT='id,order_number,customer_name,customer_phone,customer_address,payment_method,payment_status,status,subtotal,total,cancellation_reason,cancelled_at,created_at,updated_at,order_items(id,product_name,color,size,option_name,quantity,unit_price,line_total,image_url)';
-  const PROJECT_ORIGIN=new URL(ADMIN_CONFIG.projectUrl).origin;
-  let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null,livePollTimer=null,lastOrderFingerprint='';
-  let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null,loginBusy=false;
-
-  const RELAY_TIMEOUT_MS=6500;
-  function isProjectRequest(url){
-    try{return new URL(url,location.href).origin===PROJECT_ORIGIN;}catch(_e){return false;}
-  }
-  function requestParts(input,init){
-    const req=new Request(input,init);
-    const url=new URL(req.url,location.href);
-    return {req,url,target:`${url.pathname}${url.search}`};
-  }
-  async function fetchWithTimeout(request,ms=RELAY_TIMEOUT_MS){
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),ms);
-    try{
-      const cloned=request.clone();
-      return await fetch(cloned,{signal:controller.signal});
-    }finally{clearTimeout(timer);}
-  }
-  async function isUsableApiResponse(response){
-    if(!response)return false;
-    const type=clean(response.headers.get('content-type')).toLowerCase();
-    if(type.includes('text/html'))return false;
-    // A static-host SPA fallback sometimes returns 200 without a useful content type.
-    // Detect that safely without consuming the real response.
-    if(!type.includes('json')&&!type.includes('octet-stream')&&!type.startsWith('image/')&&!type.includes('text/plain')){
-      try{
-        const probe=(await response.clone().text()).trimStart().slice(0,80).toLowerCase();
-        if(probe.startsWith('<!doctype html')||probe.startsWith('<html')||probe.startsWith('<head')||probe.startsWith('<body'))return false;
-      }catch(_e){}
-    }
-    return true;
-  }
-  function candidateUrls(target){
-    const encoded=encodeURIComponent(target);
-    return [
-      `${location.origin}/.netlify/functions/supabase-proxy?target=${encoded}`,
-      `${location.origin}/wellone-db${target}`,
-      `${location.origin}/api/supabase-proxy?target=${encoded}`,
-      `${PROJECT_ORIGIN}${target}`
-    ];
-  }
-  async function welloneFetch(input,init){
-    const {req,url,target}=requestParts(input,init);
-    if(url.origin!==PROJECT_ORIGIN)return fetch(req);
-    let lastError=null;
-    for(const candidate of candidateUrls(target)){
-      try{
-        const forwarded=new Request(candidate,{
-          method:req.method,
-          headers:new Headers(req.headers),
-          body:['GET','HEAD'].includes(req.method)?undefined:await req.clone().arrayBuffer(),
-          redirect:'manual',
-          credentials:'omit',
-          cache:'no-store'
-        });
-        const response=await fetchWithTimeout(forwarded);
-        if(await isUsableApiResponse(response))return response;
-        lastError=new Error(`Invalid server response from ${new URL(candidate).pathname}`);
-      }catch(error){lastError=error;}
-    }
-    throw new TypeError(`WellOne order server is unreachable. ${clean(lastError?.message)}`.trim());
-  }
-  function relayAssetUrl(raw){
-    try{
-      const parsed=new URL(raw,location.href);
-      if(parsed.origin!==PROJECT_ORIGIN)return raw;
-      const target=`${parsed.pathname}${parsed.search}`;
-      return `${location.origin}/.netlify/functions/supabase-proxy?target=${encodeURIComponent(target)}`;
-    }catch(_e){return raw;}
-  }
-
-  function db(){
-    if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{
-      global:{fetch:welloneFetch},
-      auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false},
-      realtime:{params:{eventsPerSecond:4}}
-    });
-    return client;
-  }
-  function timeout(promise,ms,message){
-    let timer;
-    return Promise.race([
-      Promise.resolve(promise),
-      new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message||'Request timed out.')),ms);})
-    ]).finally(()=>clearTimeout(timer));
-  }
-  function friendlyError(error){
-    const message=clean(error?.message||error);
-    if(/invalid login credentials/i.test(message))return 'Incorrect admin email or password.';
-    if(/not an admin|not authorized|admin login required/i.test(message))return 'This login does not have admin access.';
-    if(/unexpected token|not valid json|text\/html|invalid server response/i.test(message))return 'The hosting server returned a webpage instead of the database response. Please redeploy the complete v92 ZIP.';
-    if(/failed to fetch|network|load failed|timed out|timeout|unreachable|abort/i.test(message))return 'Order server connection failed on every available route. Check the hosting deployment, then tap Login again.';
-    if(/jwt|refresh token|session/i.test(message))return 'Your admin session expired. Please log in again.';
-    return message||'Login failed.';
-  }
+  let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null;
+  let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null;
+  function db(){if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{realtime:{params:{eventsPerSecond:10}}});return client;}
   function setStatus(t,c=''){$('statusText').textContent=t;$('statusText').className=`receiver-status ${c}`.trim();}
-  function setLoginBusy(on){
-    loginBusy=on;
-    const button=$('loginForm')?.querySelector('button[type="submit"]');
-    if(button){button.disabled=on;button.textContent=on?'Checking…':'Login';}
-  }
   async function requireAdmin(){
     if(authorizedUser)return authorizedUser;
-    const sessionResult=await db().auth.getSession();
-    if(sessionResult.error)throw sessionResult.error;
-    const user=sessionResult.data?.session?.user;
-    if(!user)throw new Error('Login required');
-    const access=await timeout(db().from('admin_users').select('id').eq('id',user.id).maybeSingle(),12000,'Admin access check timed out.');
-    if(access.error)throw access.error;
-    if(!access.data)throw new Error('This account is not an admin.');
-    authorizedUser=user;
-    return user;
+    const {data,error}=await db().auth.getUser();
+    if(error)throw error;
+    const user=data?.user;if(!user)throw new Error('Login required');
+    const access=await db().from('admin_users').select('id').eq('id',user.id).maybeSingle();
+    if(access.error)throw access.error;if(!access.data)throw new Error('This account is not an admin.');authorizedUser=user;return user;
   }
-  const imageUrl=v=>{
-    const raw=clean(v);if(!raw)return '';
-    let source=raw;
-    if(source.includes('/storage/v1/object/public/')&&!source.includes('?'))source=`${source}?width=220&quality=70`;
-    return relayAssetUrl(source);
-  };
+  const imageUrl=v=>{const u=clean(v);if(!u)return '';return u.includes('/storage/v1/object/public/')&&!u.includes('?')?`${u}?width=220&quality=70`:u;};
   const labelStatus=s=>({placed:'New order',confirmed:'Confirmed',packed:'Packed',out_for_delivery:'Out for delivery',delivered:'Delivered',cancelled:'Cancelled'})[clean(s)]||clean(s);
   const labelPayment=m=>clean(m)==='online'?'Online payment':'Cash on delivery';
   const dateText=v=>{try{return new Date(v).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});}catch(_e){return clean(v);}};
@@ -179,12 +74,12 @@
     try{
       let q=db().from('orders').select(ORDER_SELECT).order('created_at',{ascending:false}).range(requestOffset,requestOffset+ORDER_PAGE_SIZE);
       q=applyOrderFilters(q);
-      const {data,error}=await timeout(q,15000,'Orders request timed out.');if(error)throw error;if(serial!==orderRequestSerial)return;
+      const {data,error}=await q;if(error)throw error;if(serial!==orderRequestSerial)return;
       const rows=data||[],hasMore=rows.length>ORDER_PAGE_SIZE,page=hasMore?rows.slice(0,ORDER_PAGE_SIZE):rows;
       if(reset)orders=page;else{const seen=new Set(orders.map(x=>clean(x.id)));orders=orders.concat(page.filter(x=>!seen.has(clean(x.id))));}
       nextOrderOffset=hasMore?requestOffset+page.length:null;orderOffset=nextOrderOffset??requestOffset+page.length;
       renderOrders(reset,page);updateLoader();refreshNewCount();setStatus(`Live · ${orders.length} loaded · 20 at a time`,'ok');
-    }catch(error){if(serial===orderRequestSerial){setStatus(friendlyError(error),'error');if(reset)renderOrders(true,[]);}throw error;}
+    }catch(error){if(serial===orderRequestSerial){setStatus(error.message||'Could not load orders.','error');if(reset)renderOrders(true,[]);}throw error;}
     finally{if(serial===orderRequestSerial)orderLoading=false;updateLoader();}
   }
   function setOrderView(view){
@@ -199,72 +94,26 @@
     if('IntersectionObserver'in window){orderObserver=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))next();},{root:null,rootMargin:'320px 0px 320px',threshold:.01});orderObserver.observe(loader);}
     else window.addEventListener('scroll',()=>{if(!loader.hidden&&loader.getBoundingClientRect().top<=innerHeight+320)next();},{passive:true});
   }
-  async function broadcast(_tables,_action,_details){
-    // Netlify's HTTP proxy is used for dependable Auth/REST access. Order freshness on this
-    // receiver is provided by the short live polling loop below, so a WebSocket is not required.
+  async function broadcast(tables,action,details){
+    try{if(!storeChannel){storeChannel=db().channel(STORE_CHANNEL_NAME,{config:{broadcast:{self:false,ack:true}}});storeChannel.subscribe();}await storeChannel.send({type:'broadcast',event:STORE_EVENT_NAME,payload:{tables,action,details,eventId:`receiver-${Date.now()}-${Math.random().toString(36).slice(2)}`,at:Date.now()}});}catch(_e){}
   }
   async function changeStatus(id,status){
     let note=null;if(status==='cancelled'){note=prompt('Cancellation reason (saved in customer order history):','Cancelled by shop');if(note===null){renderOrders(true);return;}if(!clean(note)){setStatus('Enter a cancellation reason.','error');renderOrders(true);return;}}
-    setStatus('Updating order...','loading');const {error}=await timeout(db().rpc('admin_update_order_status',{p_order_id:id,p_status:status,p_note:note}),15000,'Order update timed out.');if(error)throw error;
+    setStatus('Updating order...','loading');const {error}=await db().rpc('admin_update_order_status',{p_order_id:id,p_status:status,p_note:note});if(error)throw error;
     broadcast(status==='cancelled'?['orders','products','product_variants']:['orders'],`receiver-order-${status}`,{orderId:id}).catch(()=>{});await loadOrders(true);
   }
-  async function changePayment(id,status){setStatus('Updating payment...','loading');const {error}=await timeout(db().rpc('admin_set_order_payment',{p_order_id:id,p_payment_status:status}),15000,'Payment update timed out.');if(error)throw error;broadcast(['orders'],'receiver-payment',{orderId:id,paymentStatus:status}).catch(()=>{});await loadOrders(true);}
-  async function pollForOrderChanges(){
-    if(document.hidden||!authorizedUser||orderLoading)return;
-    try{
-      const {data,error}=await db().from('orders').select('id,updated_at,status').order('updated_at',{ascending:false}).limit(1);
-      if(error)return;
-      const row=data?.[0];const fp=row?`${row.id}|${row.updated_at}|${row.status}`:'';
-      if(lastOrderFingerprint&&fp&&fp!==lastOrderFingerprint)loadOrders(true).catch(()=>{});
-      lastOrderFingerprint=fp;
-      refreshNewCount();
-    }catch(_e){}
-  }
-  function startLivePolling(){
-    if(livePollTimer)return;
-    pollForOrderChanges();
-    livePollTimer=setInterval(pollForOrderChanges,3500);
-  }
+  async function changePayment(id,status){setStatus('Updating payment...','loading');const {error}=await db().rpc('admin_set_order_payment',{p_order_id:id,p_payment_status:status});if(error)throw error;broadcast(['orders'],'receiver-payment',{orderId:id,paymentStatus:status}).catch(()=>{});await loadOrders(true);}
   function startRealtime(){
-    // HTTP polling stays live even on networks where direct *.supabase.co access is unavailable.
-    startLivePolling();
+    if(realtimeChannel)return;realtimeChannel=db().channel('wellone-order-receiver-v88').on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{clearTimeout(reloadTimer);reloadTimer=setTimeout(()=>loadOrders(true).catch(()=>{}),220);}).subscribe();
   }
-  async function showApp(){
-    await requireAdmin();
-    $('loginScreen').hidden=true;$('receiverApp').hidden=false;$('orderStatusFilter').hidden=activeView!=='history';setupOrderAutoLoader();startRealtime();await loadOrders(true);
-  }
-  async function login(e){
-    e.preventDefault();if(loginBusy)return;
-    $('loginError').textContent='Checking secure access…';setLoginBusy(true);
-    try{
-      const result=await timeout(db().auth.signInWithPassword({email:clean($('emailInput').value),password:$('passwordInput').value||''}),15000,'Login request timed out.');
-      if(result.error)throw result.error;
-      authorizedUser=null;
-      await showApp();
-      $('loginError').textContent='';$('passwordInput').value='';
-    }catch(err){
-      const message=friendlyError(err);$('loginError').textContent=message;
-      if(/does not have admin access/i.test(message))await db().auth.signOut().catch(()=>{});
-    }finally{setLoginBusy(false);}
-  }
-  async function logout(){
-    try{if(realtimeChannel)db().removeChannel(realtimeChannel);if(storeChannel)db().removeChannel(storeChannel);}catch(_e){}
-    realtimeChannel=storeChannel=null;if(livePollTimer){clearInterval(livePollTimer);livePollTimer=null;}authorizedUser=null;lastOrderFingerprint='';
-    await db().auth.signOut().catch(()=>{});$('receiverApp').hidden=true;$('loginScreen').hidden=false;$('passwordInput').value='';setStatus('Login required.');
-  }
-  async function restoreSession(){
-    try{
-      const {data,error}=await db().auth.getSession();if(error||!data?.session)return;
-      $('loginError').textContent='Restoring admin session…';authorizedUser=null;
-      await showApp();$('loginError').textContent='';
-    }catch(err){
-      $('receiverApp').hidden=true;$('loginScreen').hidden=false;$('loginError').textContent=friendlyError(err);
-    }
-  }
+  async function showApp(){await requireAdmin();$('loginScreen').hidden=true;$('receiverApp').hidden=false;$('orderStatusFilter').hidden=activeView!=='history';setupOrderAutoLoader();startRealtime();await loadOrders(true);}
+  async function login(e){e.preventDefault();$('loginError').textContent='Checking...';try{const {error}=await db().auth.signInWithPassword({email:clean($('emailInput').value),password:$('passwordInput').value||''});if(error)throw error;authorizedUser=null;await showApp();$('loginError').textContent='';$('passwordInput').value='';}catch(err){$('loginError').textContent=err.message||'Login failed.';}}
+  async function logout(){try{if(realtimeChannel)db().removeChannel(realtimeChannel);if(storeChannel)db().removeChannel(storeChannel);}catch(_e){}realtimeChannel=storeChannel=null;authorizedUser=null;await db().auth.signOut().catch(()=>{});$('receiverApp').hidden=true;$('loginScreen').hidden=false;$('passwordInput').value='';setStatus('Login required.');}
   $('loginForm').addEventListener('submit',login);$('logoutBtn').addEventListener('click',logout);$('reloadOrdersBtn').addEventListener('click',()=>loadOrders(true).catch(()=>{}));
   $('orderStatusFilter').addEventListener('change',()=>loadOrders(true).catch(()=>{}));$('orderSearchInput').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadOrders(true).catch(()=>{}),300);});
   document.querySelectorAll('[data-order-view]').forEach(button=>button.addEventListener('click',()=>setOrderView(button.dataset.orderView)));
-  $('orderList').addEventListener('click',event=>{const toggle=event.target.closest('[data-order-toggle]');if(toggle){const details=$(`orderDetails-${toggle.dataset.orderToggle}`);if(details){details.hidden=!details.hidden;toggle.setAttribute('aria-expanded',String(!details.hidden));toggle.textContent=details.hidden?'View full details':'Hide details';}return;}const confirmButton=event.target.closest('[data-confirm-order]');if(confirmButton)changeStatus(confirmButton.dataset.confirmOrder,'confirmed').catch(err=>{setStatus(friendlyError(err),'error');loadOrders(true).catch(()=>{});});});
-  document.addEventListener('change',e=>{if(e.target.matches('[data-order-status]'))changeStatus(e.target.dataset.orderStatus,e.target.value).catch(err=>{setStatus(friendlyError(err),'error');loadOrders(true).catch(()=>{});});if(e.target.matches('[data-order-payment]'))changePayment(e.target.dataset.orderPayment,e.target.value).catch(err=>{setStatus(friendlyError(err),'error');loadOrders(true).catch(()=>{});});});
-  setupOrderAutoLoader();restoreSession();
+  $('orderList').addEventListener('click',event=>{const toggle=event.target.closest('[data-order-toggle]');if(toggle){const details=$(`orderDetails-${toggle.dataset.orderToggle}`);if(details){details.hidden=!details.hidden;toggle.setAttribute('aria-expanded',String(!details.hidden));toggle.textContent=details.hidden?'View full details':'Hide details';}return;}const confirmButton=event.target.closest('[data-confirm-order]');if(confirmButton)changeStatus(confirmButton.dataset.confirmOrder,'confirmed').catch(err=>{setStatus(err.message,'error');loadOrders(true).catch(()=>{});});});
+  document.addEventListener('change',e=>{if(e.target.matches('[data-order-status]'))changeStatus(e.target.dataset.orderStatus,e.target.value).catch(err=>{setStatus(err.message,'error');loadOrders(true).catch(()=>{});});if(e.target.matches('[data-order-payment]'))changePayment(e.target.dataset.orderPayment,e.target.value).catch(err=>{setStatus(err.message,'error');loadOrders(true).catch(()=>{});});});
+  setupOrderAutoLoader();
+  db().auth.getSession().then(({data})=>{if(data?.session){authorizedUser=null;showApp().catch(()=>logout());}}).catch(()=>{});
 })();
