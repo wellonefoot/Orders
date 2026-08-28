@@ -1,8 +1,8 @@
 'use strict';
-const CACHE_VERSION='wellone-orders-v91-admin-access';
+const CACHE_VERSION='wellone-orders-v92-admin-access';
 const STATIC_CACHE=`${CACHE_VERSION}-static`;
 const IMAGE_CACHE=`${CACHE_VERSION}-images`;
-const STATIC_FILES=['./css/orders.css?v=91','./js/receiver.bundle.js?v=91','./js/pwa-install.js?v=91','./manifest.webmanifest','./assets/logo.png?v=90'];
+const STATIC_FILES=['./css/orders.css?v=92','./js/receiver.bundle.js?v=92','./js/pwa-install.js?v=92','./manifest.webmanifest','./assets/logo.png?v=90'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{const c=await caches.open(STATIC_CACHE);await Promise.allSettled(STATIC_FILES.map(f=>c.add(f)));await self.skipWaiting();})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k.startsWith('wellone-orders-')&&!k.startsWith(CACHE_VERSION)).map(k=>caches.delete(k)));await self.clients.claim();})()));
 function urlOf(r){try{return new URL(r.url);}catch(_e){return null;}}

@@ -1,1 +1,11 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WellOne connection test</title><style>body{font-family:system-ui;padding:24px;max-width:720px;margin:auto}pre{white-space:pre-wrap;background:#f5f5f5;padding:16px;border-radius:12px}.ok{color:#397600}.bad{color:#a21d1d}</style></head><body><h1>WellOne order server test</h1><p id="state">Testing…</p><pre id="out"></pre><script>const key='sb_publishable_RbnMrDlHfEijBiejcRNPUg_mop2bqgM';(async()=>{const s=document.getElementById('state'),o=document.getElementById('out');try{const r=await fetch('/wellone-db/auth/v1/settings',{headers:{apikey:key},cache:'no-store'});const text=await r.text();const html=/^\s*</.test(text);s.textContent=r.ok&&!html?'Proxy working':'Proxy response is not correct';s.className=r.ok&&!html?'ok':'bad';o.textContent=`HTTP ${r.status}\ncontent-type: ${r.headers.get('content-type')}\n\n${text.slice(0,1200)}`;}catch(e){s.textContent='Connection failed';s.className='bad';o.textContent=String(e&&e.message||e);}})();</script></body></html>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WellOne Connection Test</title><style>body{font-family:system-ui;margin:24px;line-height:1.45}button{padding:12px 18px}pre{white-space:pre-wrap;background:#f5f5f5;padding:14px;border-radius:10px}</style></head><body><h1>WellOne Order Connection Test v92</h1><button id="run">Run test</button><pre id="out">Ready.</pre><script>
+const ORIGIN='https://wnavzhrkwgnegjdetdno.supabase.co';
+const target='/auth/v1/health';
+const urls=[
+ ['Netlify Function',`/.netlify/functions/supabase-proxy?target=${encodeURIComponent(target)}`],
+ ['Netlify Rewrite',`/wellone-db${target}`],
+ ['Cloudflare Function',`/api/supabase-proxy?target=${encodeURIComponent(target)}`],
+ ['Direct Supabase',`${ORIGIN}${target}`]
+];
+async function run(){const out=document.getElementById('out');out.textContent='Testing…';const lines=[];for(const [name,url] of urls){try{const c=new AbortController();const t=setTimeout(()=>c.abort(),6500);const r=await fetch(url,{cache:'no-store',signal:c.signal});clearTimeout(t);const ct=r.headers.get('content-type')||'';const text=(await r.clone().text()).slice(0,140).replace(/\s+/g,' ');lines.push(`${name}: HTTP ${r.status} | ${ct} | ${text}`)}catch(e){lines.push(`${name}: FAILED | ${e.message}`)}}out.textContent=lines.join('\n\n')}document.getElementById('run').onclick=run;run();
+</script></body></html>

@@ -1,3 +1,6 @@
+[functions]
+  directory = "netlify/functions"
+
 [[redirects]]
   from = "/wellone-db/*"
   to = "https://wnavzhrkwgnegjdetdno.supabase.co/:splat"

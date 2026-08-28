@@ -1,24 +1,18 @@
-WellOne Order Tracking / Receiving v90 — ADMIN ACCESS FIX
-
-WHAT THIS FIXES
-- The raw browser error `Unexpected token '<' ... is not valid JSON` was caused by the v89 same-origin route returning the site's HTML instead of a Supabase JSON response.
-- v90 validates relay responses and automatically tries another supported route instead of parsing that HTML as JSON.
+WellOne Order Tracking / Receiving v92 — ADMIN ACCESS FIX
 
 DEPLOY
-- Deploy the CONTENTS of this folder to the order receiving/tracking site root.
-- Keep `_redirects`, `functions/`, `netlify/`, `netlify.toml`, `sw.js`, `js/` and all normal site files.
+- Deploy the CONTENTS of this folder to the order receiving site root.
+- Keep netlify.toml, _redirects, netlify/functions/, functions/api/, sw.js, js/ and all assets.
 - Do not upload only index.html.
 
-HOSTING SUPPORT
-- Netlify static deploy: `_redirects` provides the Supabase rewrite.
-- Netlify Git/build deploy: the included Netlify Function is an additional fallback.
-- Cloudflare Pages with Functions: the included `functions/api/supabase-proxy.js` route is used.
-- If no relay feature is active, the browser falls back to direct Supabase instead of throwing the HTML/JSON parsing error.
+WHAT CHANGED
+- Real multi-route transport is now implemented. v91 only showed a fallback message but still depended on one route.
+- Login/Auth/REST tries a Netlify Function first, then the forced Netlify rewrite, then Cloudflare Pages Function, then direct Supabase.
+- Website HTML returned by a bad rewrite is rejected and the next route is tried.
 
 DATABASE
-- v90 requires NO new SQL.
-- Existing order/admin RPCs still require migrations 10 and 11 if they were never installed.
+- No new SQL is required for v92.
 
-CACHE
-- v90 uses a new service-worker cache version and never caches auth/API relay traffic.
-- After deploying, close the current order page/PWA and reopen it once.
+AFTER DEPLOY
+- Close old Order Receiving tabs/PWA windows and reopen.
+- If login still fails, open /connection-test.html and send the result.

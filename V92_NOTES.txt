@@ -1,0 +1,8 @@
+WellOne Order Receiving v92 — actual multi-route admin access fix
+
+- v91 displayed a fallback message but its Supabase client still used only /wellone-db.
+- v92 adds a real custom fetch transport that tries: Netlify Function, forced Netlify rewrite, Cloudflare Pages Function, then direct Supabase.
+- HTML/static-SPA fallback responses are rejected instead of being parsed as JSON.
+- Netlify functions directory is declared in netlify.toml.
+- Auth and REST calls bypass service-worker caching.
+- No SQL change is required.

@@ -1,16 +1,14 @@
-/* bundled from admin-config.js - v91 */
+/* bundled from admin-config.js - v92 */
 const ADMIN_CONFIG = {
-  // The real Supabase project is kept only so stored public URLs can be recognized.
+  // Canonical Supabase project URL. The browser client keeps this URL so Supabase
+  // builds the correct Auth/REST paths; a custom fetch below can relay requests
+  // through the deployed order site when direct Supabase access is unavailable.
   projectUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
-  // IMPORTANT: browser auth/database calls go through the WellOne site's own Netlify URL.
-  // This route intentionally does NOT use /supabase because /supabase is also a real
-  // folder in this deploy and can shadow a Netlify proxy rewrite.
-  supabaseUrl: `${location.origin}/wellone-db`,
+  supabaseUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
   supabaseAnonKey: 'sb_publishable_RbnMrDlHfEijBiejcRNPUg_mop2bqgM',
   storageBucket: 'product-images'
 };
 
-/* optimized order receiver v91 - same-origin Netlify Supabase proxy */
 (()=>{
   'use strict';
   const $=id=>document.getElementById(id);
@@ -23,8 +21,79 @@ const ADMIN_CONFIG = {
   let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null,livePollTimer=null,lastOrderFingerprint='';
   let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null,loginBusy=false;
 
+  const RELAY_TIMEOUT_MS=6500;
+  function isProjectRequest(url){
+    try{return new URL(url,location.href).origin===PROJECT_ORIGIN;}catch(_e){return false;}
+  }
+  function requestParts(input,init){
+    const req=new Request(input,init);
+    const url=new URL(req.url,location.href);
+    return {req,url,target:`${url.pathname}${url.search}`};
+  }
+  async function fetchWithTimeout(request,ms=RELAY_TIMEOUT_MS){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),ms);
+    try{
+      const cloned=request.clone();
+      return await fetch(cloned,{signal:controller.signal});
+    }finally{clearTimeout(timer);}
+  }
+  async function isUsableApiResponse(response){
+    if(!response)return false;
+    const type=clean(response.headers.get('content-type')).toLowerCase();
+    if(type.includes('text/html'))return false;
+    // A static-host SPA fallback sometimes returns 200 without a useful content type.
+    // Detect that safely without consuming the real response.
+    if(!type.includes('json')&&!type.includes('octet-stream')&&!type.startsWith('image/')&&!type.includes('text/plain')){
+      try{
+        const probe=(await response.clone().text()).trimStart().slice(0,80).toLowerCase();
+        if(probe.startsWith('<!doctype html')||probe.startsWith('<html')||probe.startsWith('<head')||probe.startsWith('<body'))return false;
+      }catch(_e){}
+    }
+    return true;
+  }
+  function candidateUrls(target){
+    const encoded=encodeURIComponent(target);
+    return [
+      `${location.origin}/.netlify/functions/supabase-proxy?target=${encoded}`,
+      `${location.origin}/wellone-db${target}`,
+      `${location.origin}/api/supabase-proxy?target=${encoded}`,
+      `${PROJECT_ORIGIN}${target}`
+    ];
+  }
+  async function welloneFetch(input,init){
+    const {req,url,target}=requestParts(input,init);
+    if(url.origin!==PROJECT_ORIGIN)return fetch(req);
+    let lastError=null;
+    for(const candidate of candidateUrls(target)){
+      try{
+        const forwarded=new Request(candidate,{
+          method:req.method,
+          headers:new Headers(req.headers),
+          body:['GET','HEAD'].includes(req.method)?undefined:await req.clone().arrayBuffer(),
+          redirect:'manual',
+          credentials:'omit',
+          cache:'no-store'
+        });
+        const response=await fetchWithTimeout(forwarded);
+        if(await isUsableApiResponse(response))return response;
+        lastError=new Error(`Invalid server response from ${new URL(candidate).pathname}`);
+      }catch(error){lastError=error;}
+    }
+    throw new TypeError(`WellOne order server is unreachable. ${clean(lastError?.message)}`.trim());
+  }
+  function relayAssetUrl(raw){
+    try{
+      const parsed=new URL(raw,location.href);
+      if(parsed.origin!==PROJECT_ORIGIN)return raw;
+      const target=`${parsed.pathname}${parsed.search}`;
+      return `${location.origin}/.netlify/functions/supabase-proxy?target=${encodeURIComponent(target)}`;
+    }catch(_e){return raw;}
+  }
+
   function db(){
     if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{
+      global:{fetch:welloneFetch},
       auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false},
       realtime:{params:{eventsPerSecond:4}}
     });
@@ -41,8 +110,8 @@ const ADMIN_CONFIG = {
     const message=clean(error?.message||error);
     if(/invalid login credentials/i.test(message))return 'Incorrect admin email or password.';
     if(/not an admin|not authorized|admin login required/i.test(message))return 'This login does not have admin access.';
-    if(/unexpected token|not valid json|text\/html/i.test(message))return 'Secure login route returned the website page instead of the server response. This build will try another route automatically.';
-    if(/failed to fetch|network|load failed|timed out|timeout/i.test(message))return 'Order server connection failed. Reload this page once, then try Login again.';
+    if(/unexpected token|not valid json|text\/html|invalid server response/i.test(message))return 'The hosting server returned a webpage instead of the database response. Please redeploy the complete v92 ZIP.';
+    if(/failed to fetch|network|load failed|timed out|timeout|unreachable|abort/i.test(message))return 'Order server connection failed on every available route. Check the hosting deployment, then tap Login again.';
     if(/jwt|refresh token|session/i.test(message))return 'Your admin session expired. Please log in again.';
     return message||'Login failed.';
   }
@@ -66,9 +135,9 @@ const ADMIN_CONFIG = {
   }
   const imageUrl=v=>{
     const raw=clean(v);if(!raw)return '';
-    let u=raw;
-    try{const parsed=new URL(raw,location.href);if(parsed.origin===PROJECT_ORIGIN)u=`${location.origin}/wellone-db${parsed.pathname}${parsed.search}`;}catch(_e){}
-    return u.includes('/storage/v1/object/public/')&&!u.includes('?')?`${u}?width=220&quality=70`:u;
+    let source=raw;
+    if(source.includes('/storage/v1/object/public/')&&!source.includes('?'))source=`${source}?width=220&quality=70`;
+    return relayAssetUrl(source);
   };
   const labelStatus=s=>({placed:'New order',confirmed:'Confirmed',packed:'Packed',out_for_delivery:'Out for delivery',delivered:'Delivered',cancelled:'Cancelled'})[clean(s)]||clean(s);
   const labelPayment=m=>clean(m)==='online'?'Online payment':'Cash on delivery';
