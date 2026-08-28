@@ -1,8 +1,8 @@
 'use strict';
-const CACHE_VERSION='wellone-orders-v89-admin-relay';
+const CACHE_VERSION='wellone-orders-v90-admin-relay';
 const STATIC_CACHE=`${CACHE_VERSION}-static`;
 const IMAGE_CACHE=`${CACHE_VERSION}-images`;
-const STATIC_FILES=['./css/orders.css?v=89','./js/receiver.bundle.js?v=89','./js/pwa-install.js?v=89','./manifest.webmanifest','./assets/logo.png?v=89'];
+const STATIC_FILES=['./css/orders.css?v=90','./js/receiver.bundle.js?v=90','./js/pwa-install.js?v=90','./manifest.webmanifest','./assets/logo.png?v=90'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{const c=await caches.open(STATIC_CACHE);await Promise.allSettled(STATIC_FILES.map(f=>c.add(f)));await self.skipWaiting();})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k.startsWith('wellone-orders-')&&!k.startsWith(CACHE_VERSION)).map(k=>caches.delete(k)));await self.clients.claim();})()));
 function urlOf(r){try{return new URL(r.url);}catch(_e){return null;}}
@@ -14,7 +14,7 @@ self.addEventListener('fetch',event=>{
   const r=event.request;if(r.method!=='GET')return;if(r.mode==='navigate'||r.destination==='document')return;
   const u=urlOf(r);if(!u)return;
   // Never cache secure API/auth relay traffic.
-  if(u.origin===self.location.origin&&u.pathname.startsWith('/supabase/'))return;
+  if(u.origin===self.location.origin&&(u.pathname.startsWith('/supabase/')||u.pathname==='/api/supabase-proxy'||u.pathname.startsWith('/.netlify/functions/supabase-proxy')))return;
   if(isSupabase(u)&&!publicStorage(u))return;
   const same=u.origin===self.location.origin;
   const code=same&&['script','style','font','manifest'].includes(r.destination);

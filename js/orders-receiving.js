@@ -7,25 +7,65 @@
   const ORDER_PAGE_SIZE=20;
   const ORDER_SELECT='id,order_number,customer_name,customer_phone,customer_address,payment_method,payment_status,status,subtotal,total,cancellation_reason,cancelled_at,created_at,updated_at,order_items(id,product_name,color,size,option_name,quantity,unit_price,line_total,image_url)';
   const PROJECT_ORIGIN=new URL(ADMIN_CONFIG.supabaseUrl).origin;
-  const PROXY_PATH='/' + clean(ADMIN_CONFIG.supabaseProxyPath||'/supabase').replace(/^\/+|\/+$/g,'');
+  const RELAYS=Array.isArray(ADMIN_CONFIG.supabaseRelays)?ADMIN_CONFIG.supabaseRelays:[];
+  let preferredRelay='';
   let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null,livePollTimer=null,lastOrderFingerprint='';
   let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null,loginBusy=false;
 
-  function proxiedUrl(raw){
+  function supabaseTarget(raw){
     try{
       const u=new URL(typeof raw==='string'?raw:raw.url,location.href);
       if(u.origin!==PROJECT_ORIGIN)return null;
-      return `${location.origin}${PROXY_PATH}${u.pathname}${u.search}`;
+      return `${u.pathname}${u.search}`;
     }catch(_e){return null;}
   }
-  function secureFetch(input,init={}){
-    const proxy=proxiedUrl(input);
-    const options={...init,cache:'no-store'};
-    if(!proxy)return fetch(input,options);
+  function relayUrl(relay,target){
+    const base='/' + clean(relay?.path||'').replace(/^\/+|\/+$/g,'');
+    if(!base||base==='/')return '';
+    if(clean(relay?.mode)==='path')return `${location.origin}${base}${target}`;
+    return `${location.origin}${base}?target=${encodeURIComponent(target)}`;
+  }
+  async function requestBody(input,init,method){
+    if(method==='GET'||method==='HEAD')return undefined;
+    if(Object.prototype.hasOwnProperty.call(init||{},'body'))return init.body;
     if(typeof Request!=='undefined'&&input instanceof Request){
-      return fetch(new Request(proxy,input),options);
+      try{return await input.clone().arrayBuffer();}catch(_e){return undefined;}
     }
-    return fetch(proxy,options);
+    return undefined;
+  }
+  async function fetchCopy(url,input,init={}){
+    const isRequest=typeof Request!=='undefined'&&input instanceof Request;
+    const method=clean(init.method||(isRequest?input.method:'GET')).toUpperCase()||'GET';
+    const headers=new Headers(isRequest?input.headers:undefined);
+    if(init.headers)new Headers(init.headers).forEach((value,key)=>headers.set(key,value));
+    const options={...init,method,headers,cache:'no-store'};
+    if(!options.signal&&isRequest)options.signal=input.signal;
+    const body=await requestBody(input,init,method);
+    if(body!==undefined&&method!=='GET'&&method!=='HEAD')options.body=body;
+    return fetch(url,options);
+  }
+  function relayLooksValid(response){
+    if(!response)return false;
+    if(response.headers.get('x-wellone-relay')==='1')return true;
+    const type=clean(response.headers.get('content-type')).toLowerCase();
+    if(type.includes('text/html'))return false;
+    // Netlify external rewrites return the upstream Supabase response without our marker.
+    if(type.includes('json')||type.includes('octet-stream'))return true;
+    return response.status!==404&&response.status!==405&&response.status!==501&&response.status!==502&&response.status!==503&&response.status!==504;
+  }
+  async function secureFetch(input,init={}){
+    const target=supabaseTarget(input);
+    if(!target)return fetch(input,{...init,cache:'no-store'});
+    const ordered=preferredRelay?[...RELAYS.filter(r=>clean(r.path)===preferredRelay),...RELAYS.filter(r=>clean(r.path)!==preferredRelay)]:RELAYS;
+    let lastError=null;
+    for(const relay of ordered){
+      const url=relayUrl(relay,target);if(!url)continue;
+      try{
+        const response=await fetchCopy(url,input,init);
+        if(relayLooksValid(response)){preferredRelay=clean(relay.path);return response;}
+      }catch(error){lastError=error;}
+    }
+    try{return await fetchCopy(typeof input==='string'?input:input.url,input,init);}catch(error){throw lastError||error;}
   }
   function db(){
     if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{
@@ -46,6 +86,7 @@
     const message=clean(error?.message||error);
     if(/invalid login credentials/i.test(message))return 'Incorrect admin email or password.';
     if(/not an admin|not authorized|admin login required/i.test(message))return 'This login does not have admin access.';
+    if(/unexpected token|not valid json|text\/html/i.test(message))return 'Secure login route returned the website page instead of the server response. This build will try another route automatically.';
     if(/failed to fetch|network|load failed|timed out|timeout/i.test(message))return 'Secure server connection failed. Tap Login again to retry.';
     if(/jwt|refresh token|session/i.test(message))return 'Your admin session expired. Please log in again.';
     return message||'Login failed.';
@@ -69,8 +110,7 @@
     return user;
   }
   const imageUrl=v=>{
-    let u=clean(v);if(!u)return '';
-    try{const parsed=new URL(u,location.href);if(parsed.origin===PROJECT_ORIGIN)u=`${location.origin}${PROXY_PATH}${parsed.pathname}${parsed.search}`;}catch(_e){}
+    const u=clean(v);if(!u)return '';
     return u.includes('/storage/v1/object/public/')&&!u.includes('?')?`${u}?width=220&quality=70`:u;
   };
   const labelStatus=s=>({placed:'New order',confirmed:'Confirmed',packed:'Packed',out_for_delivery:'Out for delivery',delivered:'Delivered',cancelled:'Cancelled'})[clean(s)]||clean(s);
@@ -171,7 +211,7 @@
   }
   function startRealtime(){
     if(!realtimeChannel){
-      realtimeChannel=db().channel('wellone-order-receiver-v89').on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{clearTimeout(reloadTimer);reloadTimer=setTimeout(()=>loadOrders(true).catch(()=>{}),220);}).subscribe();
+      realtimeChannel=db().channel('wellone-order-receiver-v90').on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{clearTimeout(reloadTimer);reloadTimer=setTimeout(()=>loadOrders(true).catch(()=>{}),220);}).subscribe();
     }
     startLivePolling();
   }

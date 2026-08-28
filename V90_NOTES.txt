@@ -1,0 +1,21 @@
+WellOne Order Receiving v90 — admin access route repair
+
+FIXED
+- Removes the v89 single-proxy dependency that could return index.html and trigger:
+  Unexpected token '<' ... is not valid JSON.
+- Auth/database requests now try multiple safe routes in order:
+  1) Cloudflare Pages Function route (/api/supabase-proxy)
+  2) Netlify external rewrite route (/supabase/*)
+  3) Netlify Function route (/.netlify/functions/supabase-proxy)
+  4) Direct Supabase connection as a final fallback
+- A relay response is rejected when the host returns the website HTML page instead of Supabase JSON.
+- Service worker never caches any auth/database relay request.
+- Existing admin_users authorization check is preserved.
+- Existing order page functionality and UI are unchanged.
+
+DATABASE
+- No new SQL required for v90.
+
+IMPORTANT
+- Deploy the complete folder/ZIP, not only index.html.
+- After deployment, close the old tab/PWA and reopen once so v90 service-worker assets activate.
