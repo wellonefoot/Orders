@@ -1,3 +1,5 @@
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
+[[redirects]]
+  from = "/wellone-db/*"
+  to = "https://wnavzhrkwgnegjdetdno.supabase.co/:splat"
+  status = 200
+  force = true

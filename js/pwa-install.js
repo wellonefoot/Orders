@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-    window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=89',{updateViaCache:'none'}).then(async r=>{
+    window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=91',{updateViaCache:'none'}).then(async r=>{
       await r.update().catch(()=>{});
       if(r.waiting)r.waiting.postMessage?.({type:'SKIP_WAITING'});
     }).catch(()=>{}),{once:true});

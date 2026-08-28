@@ -1,12 +1,10 @@
 const ADMIN_CONFIG = {
-  supabaseUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
+  // The real Supabase project is kept only so stored public URLs can be recognized.
+  projectUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
+  // IMPORTANT: browser auth/database calls go through the WellOne site's own Netlify URL.
+  // This route intentionally does NOT use /supabase because /supabase is also a real
+  // folder in this deploy and can shadow a Netlify proxy rewrite.
+  supabaseUrl: `${location.origin}/wellone-db`,
   supabaseAnonKey: 'sb_publishable_RbnMrDlHfEijBiejcRNPUg_mop2bqgM',
-  // Try a platform-native same-origin relay first, then Netlify's external rewrite,
-  // then a Netlify Function. If none is active the client safely falls back direct.
-  supabaseRelays: [
-    { mode: 'query', path: '/api/supabase-proxy' },
-    { mode: 'path', path: '/supabase' },
-    { mode: 'query', path: '/.netlify/functions/supabase-proxy' }
-  ],
   storageBucket: 'product-images'
 };

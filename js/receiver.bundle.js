@@ -1,18 +1,16 @@
-/* bundled from admin-config.js */
+/* bundled from admin-config.js - v91 */
 const ADMIN_CONFIG = {
-  supabaseUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
+  // The real Supabase project is kept only so stored public URLs can be recognized.
+  projectUrl: 'https://wnavzhrkwgnegjdetdno.supabase.co',
+  // IMPORTANT: browser auth/database calls go through the WellOne site's own Netlify URL.
+  // This route intentionally does NOT use /supabase because /supabase is also a real
+  // folder in this deploy and can shadow a Netlify proxy rewrite.
+  supabaseUrl: `${location.origin}/wellone-db`,
   supabaseAnonKey: 'sb_publishable_RbnMrDlHfEijBiejcRNPUg_mop2bqgM',
-  // Try a platform-native same-origin relay first, then Netlify's external rewrite,
-  // then a Netlify Function. If none is active the client safely falls back direct.
-  supabaseRelays: [
-    { mode: 'query', path: '/api/supabase-proxy' },
-    { mode: 'path', path: '/supabase' },
-    { mode: 'query', path: '/.netlify/functions/supabase-proxy' }
-  ],
   storageBucket: 'product-images'
 };
 
-/* optimized order receiver v90 - multi-route admin auth relay + safe direct fallback */
+/* optimized order receiver v91 - same-origin Netlify Supabase proxy */
 (()=>{
   'use strict';
   const $=id=>document.getElementById(id);
@@ -21,72 +19,14 @@ const ADMIN_CONFIG = {
   const STORE_CHANNEL_NAME='wellone-store-events-v1',STORE_EVENT_NAME='store-change';
   const ORDER_PAGE_SIZE=20;
   const ORDER_SELECT='id,order_number,customer_name,customer_phone,customer_address,payment_method,payment_status,status,subtotal,total,cancellation_reason,cancelled_at,created_at,updated_at,order_items(id,product_name,color,size,option_name,quantity,unit_price,line_total,image_url)';
-  const PROJECT_ORIGIN=new URL(ADMIN_CONFIG.supabaseUrl).origin;
-  const RELAYS=Array.isArray(ADMIN_CONFIG.supabaseRelays)?ADMIN_CONFIG.supabaseRelays:[];
-  let preferredRelay='';
+  const PROJECT_ORIGIN=new URL(ADMIN_CONFIG.projectUrl).origin;
   let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null,livePollTimer=null,lastOrderFingerprint='';
   let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null,loginBusy=false;
 
-  function supabaseTarget(raw){
-    try{
-      const u=new URL(typeof raw==='string'?raw:raw.url,location.href);
-      if(u.origin!==PROJECT_ORIGIN)return null;
-      return `${u.pathname}${u.search}`;
-    }catch(_e){return null;}
-  }
-  function relayUrl(relay,target){
-    const base='/' + clean(relay?.path||'').replace(/^\/+|\/+$/g,'');
-    if(!base||base==='/')return '';
-    if(clean(relay?.mode)==='path')return `${location.origin}${base}${target}`;
-    return `${location.origin}${base}?target=${encodeURIComponent(target)}`;
-  }
-  async function requestBody(input,init,method){
-    if(method==='GET'||method==='HEAD')return undefined;
-    if(Object.prototype.hasOwnProperty.call(init||{},'body'))return init.body;
-    if(typeof Request!=='undefined'&&input instanceof Request){
-      try{return await input.clone().arrayBuffer();}catch(_e){return undefined;}
-    }
-    return undefined;
-  }
-  async function fetchCopy(url,input,init={}){
-    const isRequest=typeof Request!=='undefined'&&input instanceof Request;
-    const method=clean(init.method||(isRequest?input.method:'GET')).toUpperCase()||'GET';
-    const headers=new Headers(isRequest?input.headers:undefined);
-    if(init.headers)new Headers(init.headers).forEach((value,key)=>headers.set(key,value));
-    const options={...init,method,headers,cache:'no-store'};
-    if(!options.signal&&isRequest)options.signal=input.signal;
-    const body=await requestBody(input,init,method);
-    if(body!==undefined&&method!=='GET'&&method!=='HEAD')options.body=body;
-    return fetch(url,options);
-  }
-  function relayLooksValid(response){
-    if(!response)return false;
-    if(response.headers.get('x-wellone-relay')==='1')return true;
-    const type=clean(response.headers.get('content-type')).toLowerCase();
-    if(type.includes('text/html'))return false;
-    // Netlify external rewrites return the upstream Supabase response without our marker.
-    if(type.includes('json')||type.includes('octet-stream'))return true;
-    return response.status!==404&&response.status!==405&&response.status!==501&&response.status!==502&&response.status!==503&&response.status!==504;
-  }
-  async function secureFetch(input,init={}){
-    const target=supabaseTarget(input);
-    if(!target)return fetch(input,{...init,cache:'no-store'});
-    const ordered=preferredRelay?[...RELAYS.filter(r=>clean(r.path)===preferredRelay),...RELAYS.filter(r=>clean(r.path)!==preferredRelay)]:RELAYS;
-    let lastError=null;
-    for(const relay of ordered){
-      const url=relayUrl(relay,target);if(!url)continue;
-      try{
-        const response=await fetchCopy(url,input,init);
-        if(relayLooksValid(response)){preferredRelay=clean(relay.path);return response;}
-      }catch(error){lastError=error;}
-    }
-    try{return await fetchCopy(typeof input==='string'?input:input.url,input,init);}catch(error){throw lastError||error;}
-  }
   function db(){
     if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{
-      global:{fetch:secureFetch},
       auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false},
-      realtime:{params:{eventsPerSecond:10}}
+      realtime:{params:{eventsPerSecond:4}}
     });
     return client;
   }
@@ -102,7 +42,7 @@ const ADMIN_CONFIG = {
     if(/invalid login credentials/i.test(message))return 'Incorrect admin email or password.';
     if(/not an admin|not authorized|admin login required/i.test(message))return 'This login does not have admin access.';
     if(/unexpected token|not valid json|text\/html/i.test(message))return 'Secure login route returned the website page instead of the server response. This build will try another route automatically.';
-    if(/failed to fetch|network|load failed|timed out|timeout/i.test(message))return 'Secure server connection failed. Tap Login again to retry.';
+    if(/failed to fetch|network|load failed|timed out|timeout/i.test(message))return 'Order server connection failed. Reload this page once, then try Login again.';
     if(/jwt|refresh token|session/i.test(message))return 'Your admin session expired. Please log in again.';
     return message||'Login failed.';
   }
@@ -114,9 +54,9 @@ const ADMIN_CONFIG = {
   }
   async function requireAdmin(){
     if(authorizedUser)return authorizedUser;
-    const auth=await timeout(db().auth.getUser(),12000,'Admin verification timed out.');
-    if(auth.error)throw auth.error;
-    const user=auth.data?.user;
+    const sessionResult=await db().auth.getSession();
+    if(sessionResult.error)throw sessionResult.error;
+    const user=sessionResult.data?.session?.user;
     if(!user)throw new Error('Login required');
     const access=await timeout(db().from('admin_users').select('id').eq('id',user.id).maybeSingle(),12000,'Admin access check timed out.');
     if(access.error)throw access.error;
@@ -125,7 +65,9 @@ const ADMIN_CONFIG = {
     return user;
   }
   const imageUrl=v=>{
-    const u=clean(v);if(!u)return '';
+    const raw=clean(v);if(!raw)return '';
+    let u=raw;
+    try{const parsed=new URL(raw,location.href);if(parsed.origin===PROJECT_ORIGIN)u=`${location.origin}/wellone-db${parsed.pathname}${parsed.search}`;}catch(_e){}
     return u.includes('/storage/v1/object/public/')&&!u.includes('?')?`${u}?width=220&quality=70`:u;
   };
   const labelStatus=s=>({placed:'New order',confirmed:'Confirmed',packed:'Packed',out_for_delivery:'Out for delivery',delivered:'Delivered',cancelled:'Cancelled'})[clean(s)]||clean(s);
@@ -199,8 +141,9 @@ const ADMIN_CONFIG = {
     if('IntersectionObserver'in window){orderObserver=new IntersectionObserver(entries=>{if(entries.some(x=>x.isIntersecting))next();},{root:null,rootMargin:'320px 0px 320px',threshold:.01});orderObserver.observe(loader);}
     else window.addEventListener('scroll',()=>{if(!loader.hidden&&loader.getBoundingClientRect().top<=innerHeight+320)next();},{passive:true});
   }
-  async function broadcast(tables,action,details){
-    try{if(!storeChannel){storeChannel=db().channel(STORE_CHANNEL_NAME,{config:{broadcast:{self:false,ack:true}}});storeChannel.subscribe();}await storeChannel.send({type:'broadcast',event:STORE_EVENT_NAME,payload:{tables,action,details,eventId:`receiver-${Date.now()}-${Math.random().toString(36).slice(2)}`,at:Date.now()}});}catch(_e){}
+  async function broadcast(_tables,_action,_details){
+    // Netlify's HTTP proxy is used for dependable Auth/REST access. Order freshness on this
+    // receiver is provided by the short live polling loop below, so a WebSocket is not required.
   }
   async function changeStatus(id,status){
     let note=null;if(status==='cancelled'){note=prompt('Cancellation reason (saved in customer order history):','Cancelled by shop');if(note===null){renderOrders(true);return;}if(!clean(note)){setStatus('Enter a cancellation reason.','error');renderOrders(true);return;}}
@@ -225,9 +168,7 @@ const ADMIN_CONFIG = {
     livePollTimer=setInterval(pollForOrderChanges,3500);
   }
   function startRealtime(){
-    if(!realtimeChannel){
-      realtimeChannel=db().channel('wellone-order-receiver-v90').on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{clearTimeout(reloadTimer);reloadTimer=setTimeout(()=>loadOrders(true).catch(()=>{}),220);}).subscribe();
-    }
+    // HTTP polling stays live even on networks where direct *.supabase.co access is unavailable.
     startLivePolling();
   }
   async function showApp(){

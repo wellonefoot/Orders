@@ -1,0 +1,25 @@
+WellOne Order Receiving v91 — ADMIN ACCESS / NETLIFY PROXY FIX
+
+ROOT CAUSE FIXED
+- The deploy already contains a real folder named /supabase for SQL migration files.
+- Earlier builds also tried to use /supabase/* as a Netlify proxy route.
+- Netlify static-file shadowing can prevent a rewrite from taking over an existing path unless it is forced.
+- That is why the browser could receive the site HTML or fail the secure route instead of getting Supabase Auth/REST JSON.
+
+V91 CHANGES
+- Browser Auth + database requests now use a new same-origin route: /wellone-db/*
+- _redirects uses a forced 200! proxy to the real Supabase project.
+- netlify.toml includes the same forced proxy rule.
+- No direct *.supabase.co browser request is needed for login/orders.
+- Existing public product image URLs are rewritten through /wellone-db as well.
+- The Order Receiving page uses short HTTP polling for live order updates instead of depending on a proxied WebSocket.
+- Session restore avoids an extra getUser network call.
+- Service worker cache bumped to v91 and proxy traffic is never cached.
+
+DEPLOY
+- Deploy the CONTENTS of this folder to the existing Netlify Order Receiving site root.
+- Keep _redirects at the published root. Do not upload index.html alone.
+- After deploy, close every old Order Receiving tab/PWA window and reopen it once.
+
+DATABASE
+- No new SQL is required for this admin access fix.
