@@ -9,7 +9,7 @@
   const esc=v=>clean(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const STORE_CHANNEL_NAME='wellone-store-events-v1',STORE_EVENT_NAME='store-change';
   const ORDER_PAGE_SIZE=20;
-  const ORDER_SELECT='id,order_number,customer_name,customer_phone,customer_address,payment_method,payment_status,status,subtotal,total,cancellation_reason,cancelled_at,created_at,updated_at,order_items(id,product_name,color,size,option_name,quantity,unit_price,line_total,image_url)';
+  const ORDER_SELECT='id,order_number,customer_name,customer_phone,customer_address,payment_method,payment_status,status,subtotal,total,cancellation_reason,cancelled_at,created_at,updated_at,order_items(id,product_name,color,size,option_name,product_barcode,quantity,unit_price,line_total,image_url)';
   let client=null,authorizedUser=null,realtimeChannel=null,storeChannel=null,reloadTimer=null;
   let orders=[],activeView='new',orderOffset=0,nextOrderOffset=null,orderLoading=false,orderRequestSerial=0,orderObserver=null,searchTimer=null;
   function db(){if(!client)client=window.supabase.createClient(ADMIN_CONFIG.supabaseUrl,ADMIN_CONFIG.supabaseAnonKey,{realtime:{params:{eventsPerSecond:10}}});return client;}
@@ -29,7 +29,7 @@
   const optionLabel=item=>clean(item.option_name)||'Size / option';
   function orderCard(order){
     const items=Array.isArray(order.order_items)?order.order_items:[];
-    const itemHtml=items.map(item=>`<div class="admin-order-item"><img loading="lazy" decoding="async" src="${esc(imageUrl(item.image_url))}" alt=""><div><b>${esc(item.product_name)}</b><small>${[item.color?`Colour: ${item.color}`:'',item.size?`${optionLabel(item)}: ${item.size}`:''].filter(Boolean).join(' · ')||'Standard'} · Qty ${Number(item.quantity||1)}</small></div><strong>₹${Number(item.line_total||0).toLocaleString('en-IN')}</strong></div>`).join('');
+    const itemHtml=items.map(item=>`<div class="admin-order-item"><img loading="lazy" decoding="async" src="${esc(imageUrl(item.image_url))}" alt=""><div><b>${esc(item.product_name)}</b><small>${[item.color?`Colour: ${item.color}`:'',item.size?`${optionLabel(item)}: ${item.size}`:'',item.product_barcode?`Barcode: ${item.product_barcode}`:''].filter(Boolean).join(' · ')||'Standard'} · Qty ${Number(item.quantity||1)}</small></div><strong>₹${Number(item.line_total||0).toLocaleString('en-IN')}</strong></div>`).join('');
     const itemCount=items.reduce((sum,item)=>sum+Number(item.quantity||1),0);
     return `<article class="admin-order-card ${order.status==='placed'?'is-new-order':''}" data-order-card="${esc(order.id)}">
       <div class="admin-order-head"><div><span class="admin-order-status status-${esc(order.status)}">${esc(labelStatus(order.status))}</span><h2>${esc(order.order_number)}</h2><small>${esc(dateText(order.created_at))}</small></div><strong>₹${Number(order.total||0).toLocaleString('en-IN')}</strong></div>

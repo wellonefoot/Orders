@@ -1,9 +1,9 @@
 'use strict';
-const CACHE_VERSION='wellone-orders-v93-old-admin-reference';
+const CACHE_VERSION='wellone-orders-v97-barcode-variant-details';
 const SHELL_CACHE=`${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE=`${CACHE_VERSION}-runtime`;
 const SHELL_ASSETS=[
-  './','./index.html','./css/orders.css?v=93','./js/admin-config.js?v=93','./js/orders-receiving.js?v=93','./js/pwa-install.js?v=93',
+  './','./index.html','./css/orders.css?v=97','./js/admin-config.js?v=97','./js/orders-receiving.js?v=97','./js/pwa-install.js?v=97',
   './manifest.webmanifest','./assets/logo.png','./assets/favicon/favicon.ico'
 ];
 self.addEventListener('install',event=>{
