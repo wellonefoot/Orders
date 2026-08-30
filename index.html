@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Wellone Order Receiving</title>
   <link rel="preconnect" href="https://wnavzhrkwgnegjdetdno.supabase.co">
-  <link rel="stylesheet" href="css/orders.css?v=97">
+  <link rel="stylesheet" href="css/orders.css?v=98">
   <link rel="icon" href="assets/favicon/favicon.ico">
   <link rel="apple-touch-icon" href="assets/favicon/apple-icon-180x180.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -15,7 +15,7 @@
 <body>
   <section id="loginScreen" class="login-screen">
     <form id="loginForm" class="login-card">
-      <img src="assets/logo.png?v=97" alt="Wellone">
+      <img src="assets/logo.png?v=98" alt="Wellone">
       <p class="tag">secure order desk</p>
       <h1>Order Receiving</h1>
       <p class="login-copy">Use an authorized Wellone admin login.</p>
@@ -28,12 +28,12 @@
 
   <main id="receiverApp" class="receiver-shell" hidden>
     <header class="receiver-head">
-      <img src="assets/logo.png?v=97" alt="Wellone">
+      <img src="assets/logo.png?v=98" alt="Wellone">
       <div><small>Live operations</small><b>Order Receiving</b></div>
       <button id="logoutBtn" type="button">Logout</button>
     </header>
 
-    <section class="receiver-card">
+    <section class="receiver-card" id="orderListPage">
       <div class="panel-head">
         <div><p class="tag">live orders</p><h1>Orders</h1><p>New customer orders appear first. Open a card only when you need its full details.</p></div>
         <button id="reloadOrdersBtn" class="primary-small" type="button">Refresh</button>
@@ -53,11 +53,21 @@
       <div id="orderList" class="admin-order-list"><div class="empty">No orders loaded.</div></div>
       <div id="orderAutoLoader" class="order-auto-loader" hidden aria-live="polite">Loading more orders…</div>
     </section>
+
+    <section class="receiver-card order-detail-page" id="orderDetailPage" hidden aria-live="polite">
+      <div class="detail-page-head">
+        <button id="orderDetailBack" class="detail-back-button" type="button" aria-label="Back to orders">
+          <span aria-hidden="true">←</span> Back to orders
+        </button>
+        <div><p class="tag">order details</p><h1 id="orderDetailTitle">Order</h1><p id="orderDetailSubtitle">Full order information</p></div>
+      </div>
+      <div id="orderDetailContent" class="order-detail-content"></div>
+    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/admin-config.js?v=97"></script>
-  <script src="js/orders-receiving.js?v=97"></script>
-  <script src="js/pwa-install.js?v=97"></script>
+  <script src="js/admin-config.js?v=98"></script>
+  <script src="js/orders-receiving.js?v=98"></script>
+  <script src="js/pwa-install.js?v=98"></script>
 </body>
 </html>

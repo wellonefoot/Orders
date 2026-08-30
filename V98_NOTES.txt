@@ -1,0 +1,5 @@
+WellOne Order Receiving v98
+- Order cards are compact and no longer expand inline.
+- Clicking an order opens a dedicated order detail page with a back action.
+- Product images link directly to the matching public WellOne product page.
+- Full detail page keeps customer, item, payment, status and confirmation controls.
